@@ -113,6 +113,19 @@ print(dfSummary(health, plain.ascii  = TRUE,  headings     = FALSE,
 print(descr(health, headings     = FALSE,style = "rmarkdown"), method = 'pander')
 ```
 
+```{r,  echo=FALSE,results = "asis", fig.align = 'center', message=FALSE, warning=FALSE}
+# AVERAGE BMI OF OBESE SUBJECTS 
+library("dplyr")    
+health %>%                              
+  group_by(obese) %>% 
+  summarize(min = min(bmi),
+            q1 = quantile(bmi, 0.25),
+            median = median(bmi),
+            mean = mean(bmi),
+            q3 = quantile(bmi, 0.75),
+            max = max(bmi))
+```
+
 *Table 4: Cross-Tabulations*
 ```{r,  echo=FALSE,results = "asis", fig.align = 'center', message=FALSE, warning=FALSE}
 # CROSS-TABULATION: OBESITY + INSURANCE 
@@ -403,7 +416,9 @@ anova(mod1, mod2, test="LRT")
 ```
 
 ```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
-# HETEROSCEDASTICITY-ROBUST F TEST USING WALD TES 
+# HETEROSCEDASTICITY-ROBUST F TEST USING WALD TEST
+library(lmtest)
+library(sandwich)
 waldtest(mod1, mod2, vcov = vcovHC(mod2, type = "HC1"))
 ```
 
