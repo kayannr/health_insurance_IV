@@ -1,0 +1,597 @@
+---
+title: "Association of Health Outcomes with Type of Health Insurance Coverage: An Instrumental Variable Analysis"
+author: "Kay Royo"
+date: "`r format(Sys.time(), '%Y %B %d')`"
+output:  
+  rmdformats::robobook:
+    self_contained: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+# SET CHUNK OPTIONS 
+knitr::opts_chunk$set(echo = TRUE, comment = NA, warning = FALSE, message = FALSE) 
+# CLEAR COMPUTE MEMORY
+rm(list=ls())
+```
+
+# I. Data Preprocessing 
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# LOAD SAS DATA
+library(haven)
+health <- read_sas("C:/Users/kayan/UCD/STA250/Final_Project/Data/Health/ADULT_SAS_PUF_2021/SAS/adult.sas7bdat")
+```
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# REMOVE NO INSURANCE RECORDS 
+health <- health[!health$INSTYPE == "1",] #1=uninsured
+```
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# EXCLUDE PREGRNANT WOMEN RECORDS 
+health <- health[!health$AD13 == "Yes",] 
+```
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# RECODE INSURANCE TYPE: COMMERCIAL & GOVERNMENT-FUNDED INSURANCE 
+library(car)
+health$INSTYPE <- recode(health$INSTYPE,"c('2','3','4', '5', '9')='Public'") #1
+health$INSTYPE <- recode(health$INSTYPE,"c('7','8')='Private'") #0
+```
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# RECODE EMPLOYMENT TYPE: EMPLOYED & NOT EMPLOYED 
+health$WRKST_P1 <- recode(health$WRKST_P1,"c('1','2','3')='Employed'")
+health$WRKST_P1 <- recode(health$WRKST_P1,"c('4','5')='Unemployed'")
+```
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# RECODE HH TOTAL ANNUAL INCOME BEFORE TAXES
+health$AK22_P1 <- recode(health$AK22_P1,"c('2','3', '4')='2'")
+health$AK22_P1 <- recode(health$AK22_P1,"c('5','6', '7')='3'")
+health$AK22_P1 <- recode(health$AK22_P1,"c('8','9', '10')='4'")
+health$AK22_P1 <- recode(health$AK22_P1,"c('11','12', '13')='5'")
+health$AK22_P1 <- recode(health$AK22_P1,"c('14','15', '16')='6'")
+health$AK22_P1 <- recode(health$AK22_P1,"c('17','18', '19')='7'")
+```
+
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# SELECT FEATURES
+health  <- health[c('BMI_P', 'INSTYPE','OVRWT', 'WRKST_P1','SREDUC','SRAGE_P1', 'CITIZEN2', 'OMBSRR_P1',  'PCTLF_P', 'AK22_P1', 'AB1', 'FAMSIZE2_P1', 'AD65D')]
+```
+
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# RENAME FEATURES
+colnames(health) <- c('bmi', 'insurance','obese','employment','education','age', 'citizenship', 'race', 'percent_life_US', 'hhtotal_income', 'gen_health_cond', 'family_size', 'gender')
+```
+
+```{r,  echo=FALSE,message=FALSE, warning=FALSE}
+# CHANGE VARIABLE TYPES 
+names = c('insurance','obese','employment','education','citizenship', 'race',  'percent_life_US', 'hhtotal_income', 'gen_health_cond', 'family_size', 'gender')
+health[,names] <- lapply(health[,names] , factor)
+names = c('bmi', 'age')
+health[,names] <- lapply(health[,names] , as.numeric)
+```
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# TRANSFORM BMI VARIABLE 
+health$bmi_trans <- health$bmi^(-1)
+```
+
+
+
+*Table 1: CHIS 2021 Data*
+```{r, echo= FALSE, message=FALSE, warning=FALSE}
+# FINAL DATA 
+library(DT)
+datatable(health, caption = htmltools::tags$caption(
+                  style = ' caption-side: top;text-align: left;  font-size: 16px; font-style:italic;',
+                  'Table 1: CHIS 2021 Data'), selection="multiple", rownames = FALSE,filter="top", options = list(pageLength = 5, 
+                  lengthChange = FALSE, scrollX=F, fixedColumns = FALSE, sDom  = '<"top">lrt<"bottom">ip', 
+                  columnDefs = list(list(width = '40px', targets = "_all"))))
+```
+
+# II. Exploratory Data Analysis 
+
+*Table 2: Data summary*
+```{r,  echo=FALSE,results = "asis",fig.caption = 'Table 2: Data summary', fig.align = 'center', out.width="50%",message=FALSE, warning=FALSE}
+# DATAFRAME SUMMARY 
+library(summarytools)
+print(dfSummary(health, plain.ascii  = TRUE,  headings     = FALSE,
+          style        = "multiline", 
+          graph.col    = FALSE, 
+          valid.col    = FALSE, silent = TRUE, varnumbers = FALSE, display.labels = TRUE, footnote = ''), method = 'pander',headings = FALSE, bootstrap.css = FALSE)
+```
+
+*Table 3: Descriptive statistics*
+```{r,  echo=FALSE,results = "asis",fig.align = 'center', message=FALSE, warning=FALSE}
+# SUMMARY OF QUANTITATIVE FEATURES  
+print(descr(health, headings     = FALSE,style = "rmarkdown"), method = 'pander')
+```
+
+*Table 4: Cross-Tabulations*
+```{r,  echo=FALSE,results = "asis", fig.align = 'center', message=FALSE, warning=FALSE}
+# CROSS-TABULATION: OBESITY + INSURANCE 
+with(health, 
+     print(ctable(x = insurance, 
+                  y = obese, 
+                  prop     = 'n',
+                  chisq = TRUE,
+                   OR    = TRUE,
+                   RR    = TRUE,
+                  totals   = FALSE, 
+                  headings = FALSE),
+           method = "pander")
+)
+```
+
+```{r,  echo=FALSE,results = "asis", fig.align = 'center', message=FALSE, warning=FALSE}
+# CROSS-TABULATION: EMPLOYMENT + INSURANCE 
+with(health, 
+     print(ctable(x = insurance, 
+                  y = employment, 
+                  prop     = 'n',
+                  chisq = TRUE,
+                   OR    = TRUE,
+                   RR    = TRUE,
+                  totals   = FALSE, 
+                  headings = FALSE),
+           method = "pander")
+)
+```
+
+```{r,  echo=FALSE,results = "asis", fig.align = 'center', message=FALSE, warning=FALSE}
+# CROSS-TABULATION: OBESITY + EMPLOYMENT 
+with(health, 
+     print(ctable(x = obese, 
+                  y = employment, 
+                  prop     = 'n',
+                  chisq = TRUE,
+                   OR    = TRUE,
+                   RR    = TRUE,
+                  totals   = FALSE, 
+                  headings = FALSE),
+           method = "pander")
+)
+```
+
+```{r,  echo=FALSE, fig.caption = 'Table 2: Data summary', fig.align = 'center', message=FALSE, warning=FALSE}
+# BOXPLOT 
+library(ggplot2)
+library(plotly)
+fig <- plot_ly(health, x = ~insurance, y = ~bmi, color = ~employment, type = "box")
+fig <- fig %>% layout(boxmode = "group")
+fig <- fig %>% layout(title = "")
+fig
+```
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# ASSESS NORMALITY OF CONT OUTCOME BMI  
+f2 <- ggplot(health, aes(x = bmi)) + 
+    geom_histogram(aes(y = ..density..),bins = 30, fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="bmi")
+
+f4 <- ggplot(health, aes(x = log(bmi))) +
+    geom_histogram(aes(y = ..density..),bins = 30, fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="log(bmi)")
+
+f5<- ggplot(health, aes(x = (bmi)^(-1))) +
+    geom_histogram(aes(y = ..density..),bins = 30, fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="bmi^(-1)")
+
+plotly::subplot(f2, f4, f5, nrows=1, shareX=F, shareY=F, margin =0.02,titleX = TRUE)
+```
+
+
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# BAR PLOT OF FEATURES 
+f2 <- ggplot(health, aes(y = age)) + 
+    geom_bar( fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="age")
+
+f4 <- ggplot(health, aes(y = gender)) +
+     geom_bar( fill = "#69b3a2", color = "white",alpha=0.8)  +
+                labs(x="gender")
+
+f5<- ggplot(health, aes(y = race)) +
+     geom_bar( fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="race")
+
+f6<- ggplot(health, aes(y = family_size)) +
+     geom_bar( fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="family_size")
+
+f7<- ggplot(health, aes(y  = education)) +
+     geom_bar( fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="education")
+f8<- ggplot(health, aes(y = hhtotal_income)) +
+     geom_bar( fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="hhtotal_income")
+f9<- ggplot(health, aes(y  = percent_life_US)) +
+     geom_bar( fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="percent_life_US")
+f10<- ggplot(health, aes(y  = gen_health_cond)) +
+     geom_bar( fill = "#69b3a2", color = "white",alpha=0.8) +
+                labs(x="gen_health_cond")
+
+plotly::subplot(f2, f4, f5,f6, f7, f8, f9, f10,  nrows=4, shareX=F, shareY=F, margin =0.08,titleX = TRUE)
+```
+
+
+# III. Instrumental Variables 
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# NONPARAMETRIC CHI-SQUARE TEST: ASSOCIATION BETW CAT VARS 
+library(janitor)
+chisq.test(health %>% tabyl(insurance, employment ))
+chisq.test(health %>% tabyl(insurance, family_size ))
+chisq.test(health %>% tabyl(insurance, education ))
+chisq.test(health %>% tabyl(insurance, hhtotal_income ))
+chisq.test(health %>% tabyl(insurance, citizenship ))
+chisq.test(health %>% tabyl(insurance, percent_life_US ))
+chisq.test(health %>% tabyl(insurance, gen_health_cond ))
+chisq.test(health %>% tabyl(obese, gen_health_cond ))
+chisq.test(health %>% tabyl(age, employment ))
+chisq.test(health %>% tabyl(race, employment ))
+chisq.test(health %>% tabyl(race, age ))
+```
+
+
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# NONPARAMETRIC KRUSAL WALLIS TEST: ASSOCIATION BETW CAT AND CONT VARS 
+library(stats)
+kruskal.test(bmi~employment, data = health)
+kruskal.test(bmi~family_size, data = health)
+kruskal.test(bmi ~ education, data = health)
+kruskal.test(bmi ~ hhtotal_income, data = health)
+kruskal.test(bmi ~ citizenship, data = health)
+kruskal.test(bmi ~ percent_life_US, data = health)
+kruskal.test(bmi ~ gen_health_cond, data = health)
+```
+
+
+
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# ANOVA
+fit <- aov(bmi~insurance, data = health) 
+summary(fit)
+fit <- aov(bmi~employment, data = health) 
+summary(fit)
+fit <- aov(bmi~family_size, data = health) 
+summary(fit)
+fit <- aov(bmi~education, data = health) 
+summary(fit)
+fit <- aov(bmi~hhtotal_income, data = health) 
+summary(fit)
+fit <- aov(bmi~citizenship, data = health) 
+summary(fit)
+fit <- aov(bmi~percent_life_US, data = health) 
+summary(fit)
+fit <- aov(bmi~gen_health_cond, data = health) 
+summary(fit)
+```
+
+
+
+
+
+
+
+```{r,  include=FALSE, message=FALSE, warning=FALSE}
+# IV METHOD DIAGRAM
+pacman::p_load(
+  DiagrammeR,     # for flow diagrams
+  networkD3,      # For alluvial/Sankey diagrams
+  tidyverse)      # data management and visualization
+```
+
+```{r,  echo=FALSE, fig.align = 'center', fig.cap = 'Figure 11: OLS Model Diagnostic Plots',message=FALSE, warning=FALSE}
+# IV METHOD DIAGRAM
+library(DiagrammeR)
+DiagrammeR::grViz("digraph surveillance_diagram{
+         
+                     graph[layout = dot, rankdir = LR, fontsize = 5, overlap = false, bgcolor=white]
+                     
+                     node[shape = circle, style = filled, width = 1.3]  
+                     A[label = 'Employment \n (IV)', fillcolor = darkgrey, fontcolor = white]
+                     B[label = 'Health Insurance \n (Treatment)', fillcolor = darkgrey, fontcolor = white]
+                     C[label = 'BMI \n (Outcome)', fillcolor = darkgrey, fontcolor = white]
+                     D[label = 'Unobserved \n Confounders', fillcolor = white, fontcolor = black]
+                     
+                    { rank=same A B C }
+ 
+                     edge[color = black]
+                     A -> B [headlabel = 'Relevance  ',color=darkgreen, fontcolor= darkgreen] 
+                     B -> C [color=darkgreen] 
+                     D -> C [color = blue]
+                     D -> B [color = blue]
+                     A -> C [label = '        Exclusion', color = red,style = dashed, fontcolor= red]
+                     A -> D [label = '  Exogeneity', color = red,style = dashed, fontcolor= red]
+                       
+                     
+                     }")
+# tmp = DiagrammeRsvg::export_svg(tmp)
+# tmp = charToRaw(tmp) # flatten
+# rsvg::rsvg_png(tmp, "dag.png") # saved graph as png in current working directory
+```
+
+
+
+
+
+```{r table2.3.1, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+tabl <- "
+
+| Variable                     | Treatment (Insurance Coverage)*      | Outcome (BMI)**            | Outcome (BMI)***           |
+|------------------------------|--------------------------------------|----------------------------|----------------------------|
+| employment                   | p-value < 2.2e-16                    | p-value = 0.6951           | p-value = 0.275            |
+| family_size                  | p-value < 2.2e-16                    | p-value = 0.003808         | p-value = 0.00471          |
+| education                    | p-value < 2.2e-16                    | p-value < 2.2e-16          | p-value < 2.2e-16          |
+| hhtotal_income               | p-value < 2.2e-16                    | p-value < 2.2e-16          | p-value < 2.2e-16          |
+| citizenship                  | p-value = 0.001534                   | p-value < 2.2e-16          | p-value < 2.2e-16          |
+| percent_life_US              | p-value < 2.2e-16                    | p-value < 2.2e-16          | p-value < 2.2e-16          |
+| gen_health_cond              | p-value < 2.2e-16                    | p-value < 2.2e-16          | p-value < 2.2e-16          |
+"
+cat(tabl) # output the table in a format good for HTML/PDF/docx conversion
+```
+`Table`: Proposed IVs (* = Chi-square test, ** = Kruskal-wallis test, ***= ANOVA)
+
+
+
+
+# IV. Inferential Analysis**
+
+## 1. Preliminary fitting 
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# FULL MODEL WITH ALL CONTROL VARIABLES AND ORIGINAL RESPONSE 
+pre_fit<- lm(bmi~ insurance + age + race + gender + family_size + 
+    education + hhtotal_income + citizenship + percent_life_US + 
+    gen_health_cond , data = health)
+```
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# FULL MODEL WITH ALL CONTROL VARIABLES AND TRANSFORMED RESPONSE 
+full_model <- lm(bmi_trans ~ insurance + age + race + gender + family_size + 
+    education + hhtotal_income + citizenship + percent_life_US + 
+    gen_health_cond , data = health)
+
+model_red <- lm(bmi_trans~1, data=health)
+```
+
+
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# BEST MODEL USING AIC 
+library(MASS) #k=2 is AIC, k=log(n) is BIC
+#trace = 0 to hide all steps output 
+step_fs1<-stepAIC(model_red,scope=list(upper=full_model, lower=~1), trace = 0, direction="both", k=2)
+step_fs1$anova
+```
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# BEST MODEL USING FORWARD STEPWISE 
+step_fs2<-stepAIC(model_red,scope=list(upper=full_model, lower=~1), trace=0, direction="forward",k=2)
+step_fs2$anova
+```
+
+
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# TEST WHETHER CITIZENSHIP SHOULD BE INCLUDED TO CONFIRM RESULTS ABOVE 
+mod1 <- lm(bmi_trans ~ insurance+age+ race+ gender+ family_size+ education+ hhtotal_income+percent_life_US + 
+    gen_health_cond + citizenship, data= health) 
+mod2 <- lm(bmi_trans ~ insurance+age+ race+ gender+ family_size+ education+ hhtotal_income+ percent_life_US + 
+    gen_health_cond, data= health) 
+anova(mod1, mod2, test="LRT") 
+```
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# ANOVA TEST FOR EMPLOYMENT 
+mod1 <- lm(bmi_trans ~ insurance+age+ race+ gender+ family_size+ education+ hhtotal_income+percent_life_US + 
+    gen_health_cond, data= health) 
+mod2 <- lm(bmi_trans ~ insurance+age+ race+ gender+ family_size+ education+ hhtotal_income+ percent_life_US + 
+    gen_health_cond + employment, data= health) 
+anova(mod1, mod2, test="LRT") 
+```
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# HETEROSCEDASTICITY-ROBUST F TEST USING WALD TES 
+waldtest(mod1, mod2, vcov = vcovHC(mod2, type = "HC1"))
+```
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: OLS Model Box-Cox Plot',message=FALSE, warning=FALSE}
+# Box-cox
+par(mfrow=c(1,2))
+MASS::boxcox(pre_fit)
+MASS::boxcox(full_model)
+```
+
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# FIT ANOVA 
+fit_aov <- aov(bmi_trans~ insurance + age + race + gender + family_size + education + hhtotal_income  +citizenship  + percent_life_US + gen_health_cond , data = health)
+summary(fit_aov)
+```
+
+## 2. OLS 
+
+```{r,  echo=FALSE, fig.align = 'center', message=FALSE, warning=FALSE}
+# FIT MULTIVARIATE LINEAR REGRESSION OF TRANSFORMED BMI 
+fit_ols <- lm(bmi_trans~ insurance+ age + race + gender + family_size + education + hhtotal_income  
+                        + percent_life_US +  gen_health_cond, data = health)
+summary(fit_ols)
+```
+
+
+
+
+## 3. 2SLS (Manual)
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# STAGE 1 OLS (same result as bove)
+X <- model.matrix(~  insurance, data = health)
+Z <- model.matrix(~ age + race + gender + family_size + education + hhtotal_income  
+                        + percent_life_US +  gen_health_cond + employment, data = health)
+stage_1 <- lm(X ~ Z)
+print(summary(stage_1)[2])
+```
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# STAGE 1 OLS W/ CONTROL VARIABLES TREATED AS BOTH INDEPENDENT AND INSTRUMENTAL VARIABLES 
+X <- model.matrix(~  insurance+ age + race + gender + family_size + education + hhtotal_income  
+                        + percent_life_US +  gen_health_cond , data = health)
+Z <- model.matrix(~ age + race + gender + family_size + education + hhtotal_income  
+                        + percent_life_US +  gen_health_cond + employment, data = health)
+stage_1 <- lm(X ~ Z)
+print(summary(stage_1,  vcov = vcovHC(fit_ivreg, type = "HC1"))[2])
+```
+
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# STAGE 2 OLS 
+X_hat <- fitted(stage_1)
+stage_2 <- lm(health$bmi_trans ~ X_hat)
+# USE  HETEROSCEDASTICITY-ROBUST (HC) VAR-COV ESTIMATOR TO COMPUTE SE OF EST. COEFFS
+summary(stage_2, vcov = vcovHC(fit_ivreg, type = "HC1"))
+```
+
+Reference: [Source](http://bkenkel.com/psci8357/notes/10-2sls.pdf)
+
+
+## 4. 2SLS (ivreg)
+
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# MULTIVARIATE 2SLS OF 1/BMI ON INSURANCE AND OTHERS WITH EMPLOYMENT AS THE IV 
+library(AER) 
+fit_ivreg <- ivreg(bmi_trans~insurance+ age + race + gender + family_size + education + hhtotal_income  
+                        + percent_life_US +  gen_health_cond | age + race + gender + family_size + education 
+                        +  hhtotal_income + percent_life_US +  gen_health_cond  + employment ,data=health)
+summary(fit_ivreg,diagnostics = TRUE)
+```
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# USE SANDWICH ESTIMATOR TO COMPUTE VAR-COV MATRIX OF EST. COEFFS 
+summary(fit_ivreg, vcov = sandwich, diagnostics = TRUE)
+```
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# USE  HETEROSCEDASTICITY-ROBUST (HC) VAR-COV ESTIMATOR TO COMPUTE SE OF EST. COEFFS
+summary(fit_ivreg,vcov = vcovHC(fit_ivreg, type = "HC1"), diagnostics = TRUE)
+```
+
+
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# t-TEST OF COEFFICIENTS 
+library(lmtest)
+coeftest(fit_ivreg, vcov = vcovHC, type = "HC1")
+```
+
+
+
+# V. Sensitivity Analysis
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# COMPARE ESTIMATES AND S.E. BETW. OLS AND IV REGRESSION  
+car::compareCoefs(fit_ols, fit_ivreg)
+```
+
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# OLS VS. IV REGRESSION 
+library("modelsummary")
+m_list <- list(OLS = fit_ols, IV = fit_ivreg)
+msummary(m_list)
+```
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# PLOT OLS VS. IV REGRESSION EST. COEFFICIENTS 
+modelplot(m_list, coef_omit = "Intercept|experience")
+```
+
+
+```{r,  echo=FALSE, fig.align = 'center', fig.cap = 'Figure 11: OLS Model Diagnostic Plots',message=FALSE, warning=FALSE}
+# MODEL DIAGNOSTIC PLOTS: OLS  
+par(mfrow=c(2,2))
+plot(pre_fit,pch =20, cex = 2, col = "aquamarine2")
+```
+
+
+
+```{r,  echo=FALSE, fig.align = 'center', fig.cap = 'Figure 11: OLS Model Diagnostic Plots',message=FALSE, warning=FALSE}
+# MODEL DIAGNOSTIC PLOTS: OLS  
+par(mfrow=c(2,2))
+plot(fit_ols,pch =20, cex = 2, col = "aquamarine2")
+```
+
+```{r,  echo=FALSE, fig.align = 'center', fig.cap = 'Figure 11: OLS Model Diagnostic Plots',message=FALSE, warning=FALSE}
+# MODEL DIAGNOSTIC PLOTS: 2SLS
+par(mfrow=c(2,2))
+plot(stage_2,pch =20, cex = 2, col = "aquamarine2")
+```
+
+
+
+```{r, echo = FALSE,  fig.align = 'left', fig.cap = 'Figure 11: Box-Cox Plot',message=FALSE, warning=FALSE}
+# WALD TEST
+library(lmtest)
+wald_test <- waldtest(fit_ivreg)
+print(wald_test)
+```
+
+## Using `ivmodel` to implement 2SLS 
+
+```{r echo=FALSE, fig.align='left', fig.cap='Figure 11: Box-Cox Plot', message=FALSE, warning=FALSE}
+# ANDERSON-RUBIN TEST
+library(ivmodel)
+library(dplyr)
+Y=health$bmi_trans
+d <- recode(health$insurance, 'Public' = 1, 'Private' = 0) #recode treatment 
+#D=health$insurance
+Z=health$employment
+X_name=c('age' ,'race' , 'gender' , 'family_size' ,'education' , 'hhtotal_income' ,'percent_life_US' ,  'gen_health_cond')
+X=health[X_name]
+fit_ivmodel = ivmodel(Y=Y,D=d,Z=Z,X=X)
+fit_ivmodel
+```
+```{r echo=FALSE, fig.align='left', fig.cap='Figure 11: Box-Cox Plot', message=FALSE, warning=FALSE}
+# AR TEST
+AR.test(fit_ivmodel, beta0 = 0, alpha = 0.05)
+```
+
+```{r echo=FALSE, fig.align='left', fig.cap='Figure 11: Box-Cox Plot', message=FALSE, warning=FALSE}
+confint(fit_ivmodel)
+```
+
+```{r echo=FALSE, fig.align='left', fig.cap='Figure 11: Box-Cox Plot', message=FALSE, warning=FALSE}
+IVpower(fit_ivmodel, beta=0.05)
+IVpower(fit_ivmodel, type="AR",beta=0.1)
+```
+
+
+```{r echo=FALSE, fig.align='left', fig.cap='Figure 11: Box-Cox Plot', message=FALSE, warning=FALSE}
+# MIN SIZE NEEDED TO ACHIEVE A SPECIFIC POWER THRESHOLD
+IVsize(fit_ivmodel, beta=0.1,power=0.8)
+IVsize(fit_ivmodel, beta=0.1,power=0.8, type="AR")
+```
+
+
+
+
+
+
+
+
+
+
+
+
